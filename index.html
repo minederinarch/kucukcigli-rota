@@ -117,19 +117,39 @@ function nearHeading(ll){
   const h=bearing(best[0],best[1]), hz=bearing([ll.lat,ll.lng],IZSEM);
   const diff=Math.abs(((h-hz+540)%360)-180); return diff<90?h:(h+180)%360;
 }
-const arrow=(h)=>`<svg width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(${h||0}deg)"><path d="M22 4 L32 24 L22 19 L12 24 Z" fill="${h==null?'transparent':'#2B2A26'}"/><circle cx="22" cy="22" r="7" fill="#fff" stroke="#2B2A26" stroke-width="3"/></svg>`;
-let here=null;
-function openSV(ll){
-  const h=nearHeading(ll);
-  if(here) map.removeLayer(here);
-  here=L.marker(ll,{icon:L.divIcon({className:'',html:arrow(h),iconSize:[44,44],iconAnchor:[22,22]}),zIndexOffset:3000,interactive:false}).addTo(map);
-  const loc=`${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}`;
-  document.getElementById('where').textContent=loc;
-  const gm=document.getElementById('gm'); gm.href=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc}${h!=null?'&heading='+Math.round(h):''}`; gm.style.display='';
-  const box=document.getElementById('svbox');
-  if(KEY==="YOUR_KEY"){ box.innerHTML='<div id="svempty"><div class="big">⚿</div>Sokak Görünümü için Google Maps Embed API anahtarı henüz eklenmedi.<br>Şimdilik sağ üstteki “Google Haritalar ↗” bağlantısıyla açabilirsin.</div>'; return; }
-  box.innerHTML=`<iframe allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="https://www.google.com/maps/embed/v1/streetview?key=${KEY}&location=${loc}${h!=null?'&heading='+Math.round(h):''}&pitch=0&fov=90&language=tr&region=TR"></iframe>`;
+const arrow=(h)=>`<svg width="44" height="44" viewBox="0 0 44 44" style="transform:rotate(${h||0}deg);transition:transform .15s"><path d="M22 4 L32 24 L22 19 L12 24 Z" fill="${h==null?'transparent':'#2B2A26'}"/><circle cx="22" cy="22" r="7" fill="#fff" stroke="#2B2A26" stroke-width="3"/></svg>`;
+let here=null, pano=null, svs=null, lastH=null, follow=true;
+function placeHere(ll,h){
+  if(!here){ here=L.marker(ll,{icon:L.divIcon({className:'',html:arrow(h),iconSize:[44,44],iconAnchor:[22,22]}),zIndexOffset:3000,interactive:false}).addTo(map); }
+  else { here.setLatLng(ll); here.setIcon(L.divIcon({className:'',html:arrow(h),iconSize:[44,44],iconAnchor:[22,22]})); }
+  if(follow && !map.getBounds().pad(-0.15).contains(ll)) map.panTo(ll,{animate:true,duration:.4});
 }
+function setGM(ll,h){
+  const loc=`${ll.lat.toFixed(6)},${ll.lng.toFixed(6)}`; document.getElementById('where').textContent=loc;
+  const gm=document.getElementById('gm'); gm.href=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${loc}${h!=null?'&heading='+Math.round(h):''}`; gm.style.display='';
+}
+function svMsg(t){ document.getElementById('svbox').insertAdjacentHTML('beforeend',`<div id="svmsg" style="position:absolute;left:12px;bottom:12px;right:12px;background:rgba(250,250,250,.95);border-radius:10px;padding:10px 12px;font-size:13px;color:#555;z-index:5">${t}</div>`); setTimeout(()=>{const m=document.getElementById('svmsg'); if(m) m.remove();},4000); }
+function openSV(ll){
+  const h=nearHeading(ll); lastH=h; placeHere(ll,h); setGM(ll,h);
+  if(!pano){ return; }
+  const m=document.getElementById('svmsg'); if(m) m.remove();
+  svs.getPanorama({location:{lat:ll.lat,lng:ll.lng},radius:60,source:google.maps.StreetViewSource.OUTDOOR,preference:google.maps.StreetViewPreference.NEAREST},(d,st)=>{
+    if(st!=='OK'){ svMsg('Bu noktanın 60 m yakınında sokak görüntüsü yok. Başka bir sokağa dokun.'); return; }
+    document.getElementById('svempty')?.remove(); document.getElementById('svpano').style.visibility='visible';
+    pano.setPano(d.location.pano);
+    if(h!=null) pano.setPov({heading:h,pitch:0});
+  });
+}
+window.initSV=function(){
+  const box=document.getElementById('svbox'); const el=document.createElement('div'); el.id='svpano'; el.style.cssText='position:absolute;inset:0;visibility:hidden'; box.appendChild(el);
+  pano=new google.maps.StreetViewPanorama(el,{addressControl:false,fullscreenControl:false,motionTracking:false,motionTrackingControl:false,showRoadLabels:true,zoomControl:true,panControl:true,linksControl:true,enableCloseButton:false});
+  svs=new google.maps.StreetViewService();
+  pano.addListener('position_changed',()=>{const p=pano.getPosition(); if(!p) return; const ll=L.latLng(p.lat(),p.lng()); const h=pano.getPov().heading; placeHere(ll,h); setGM(ll,h);});
+  pano.addListener('pov_changed',()=>{ if(!here) return; const h=pano.getPov().heading; here.setIcon(L.divIcon({className:'',html:arrow(h),iconSize:[44,44],iconAnchor:[22,22]})); });
+  if(here) openSV(here.getLatLng());
+};
+window.gm_authFailure=function(){ document.getElementById('svbox').innerHTML='<div id="svempty"><div class="big">⚿</div>Google anahtarı bu sayfada çalışmadı (Maps JavaScript API açık ve anahtar bu adrese izinli olmalı).<br>Şimdilik sağ üstteki “Google Haritalar ↗” bağlantısını kullan.</div>'; pano=null; };
+(function(){ const sc=document.createElement('script'); sc.src=`https://maps.googleapis.com/maps/api/js?key=${KEY}&callback=initSV&language=tr&region=TR&v=weekly&loading=async`; sc.async=true; sc.onerror=()=>gm_authFailure(); document.head.appendChild(sc); })();
 function showInfo(p){
   const r=ROTA.features.find(f=>f.properties.no===p.no).properties, el=document.getElementById('rinfo');
   el.innerHTML=`<b>Başlangıç ${r.no}</b> → İZSEM<br>${r.n} farklı yürüme rotası · en kısası ${r.min_m} m (~${r.min_dk} dk) · rotalar ${r.min_dk}–${r.max_dk} dk`;
