@@ -61,11 +61,11 @@ svg.here{transition:transform .12s linear}
  <div id="mapbox"><div id="map"></div>
   <div class="bar">
    <div class="card title"><h1>DÜŞÜK KARBONLU ULAŞIM ATÖLYESİ</h1><p>Küçük Çiğli · başlangıç noktalarından İZSEM'e yürüme rotaları</p></div>
-   <div class="card seg" id="seg"><button data-r="all" class="on">Tümü</button><button data-r="1">1</button><button data-r="2">2</button><button data-r="3">3</button></div>
+   <div class="card seg" id="seg"><button data-r="all" class="on">Tümü</button><button data-r="1">1</button><button data-r="2">2</button><button data-r="3">3</button><button id="fs" title="Tam ekran" aria-label="Tam ekran" style="min-width:44px;padding:0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2B2A26" stroke-width="2" stroke-linecap="round"><path id="fsi" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
   </div>
   <div class="card legend" id="legend"><h2 id="lh">LEJANT <span id="lt" style="letter-spacing:0;font-size:18px">–</span></h2><div class="body">
    <div class="grp">ROTALAR</div>
-   <div class="row"><span class="ln" style="border-color:#8E5BA8;border-top-width:3px;width:10px"></span><span class="ln" style="border-color:#2F7F8C;border-top-width:3px;width:10px;margin-left:-9px"></span><span class="ln" style="border-color:#C9822B;border-top-width:3px;width:10px;margin-left:-9px"></span>İZSEM'e yürüme rotaları</div>
+   <div class="row"><span class="ln" style="border-color:#8E5BA8;border-top-width:3px;width:10px"></span><span class="ln" style="border-color:#2F7F8C;border-top-width:3px;width:10px;margin-left:-9px"></span><span class="ln" style="border-color:#C9822B;border-top-width:3px;width:10px;margin-left:-9px"></span>İZSEM'e en kısa yürüme rotası</div>
    <div class="row"><span class="pin" style="width:20px;height:20px;font-size:11px;box-shadow:0 0 0 2px #fff">1</span>Atasanayi İZBAN</div>
    <div class="row"><span class="pin" style="width:20px;height:20px;font-size:11px;box-shadow:0 0 0 2px #fff">2</span>Ata Sanayi tramvay</div>
    <div class="row"><span class="pin" style="width:20px;height:20px;font-size:11px;box-shadow:0 0 0 2px #fff">3</span>Turan Çakın İlkokulu</div>
@@ -152,14 +152,14 @@ window.gm_authFailure=function(){ document.getElementById('svbox').innerHTML='<d
 (function(){ const sc=document.createElement('script'); sc.src=`https://maps.googleapis.com/maps/api/js?key=${KEY}&callback=initSV&language=tr&region=TR&v=weekly&loading=async`; sc.async=true; sc.onerror=()=>gm_authFailure(); document.head.appendChild(sc); })();
 function showInfo(p){
   const r=ROTA.features.find(f=>f.properties.no===p.no).properties, el=document.getElementById('rinfo');
-  el.innerHTML=`<b>Başlangıç ${r.no}</b> → İZSEM<br>${r.n} farklı yürüme rotası · en kısası ${r.min_m} m (~${r.min_dk} dk) · rotalar ${r.min_dk}–${r.max_dk} dk`;
+  el.innerHTML=`<b>Başlangıç ${r.no}</b> → İZSEM<br>En kısa yürüme rotası · ${r.min_m} m · yaklaşık ${r.min_dk} dk`;
   el.style.display='block'; clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none',6000);
 }
 map.on('click',e=>openSV(e.latlng));
-document.querySelectorAll('#seg button').forEach(b=>{
+document.querySelectorAll('#seg button[data-r]').forEach(b=>{
   if(b.dataset.r!=='all') b.style.boxShadow=`inset 0 -4px 0 ${C[b.dataset.r]}, 0 1px 6px rgba(0,0,0,.08)`;
   b.onclick=()=>{
-    document.querySelectorAll('#seg button').forEach(x=>{x.classList.remove('on');x.style.background=''});
+    document.querySelectorAll('#seg button[data-r]').forEach(x=>{x.classList.remove('on');x.style.background=''});
     b.classList.add('on'); const r=b.dataset.r; if(r!=='all') b.style.background=C[r];
     [1,2,3].forEach(k=>{ if(r==='all'||r==k) map.addLayer(layers[k]); else map.removeLayer(layers[k]); });
     if(r==='all') map.flyToBounds(ALL,{duration:.6});
@@ -169,6 +169,16 @@ document.querySelectorAll('#seg button').forEach(b=>{
 document.getElementById('lh').onclick=()=>{const l=document.getElementById('legend');l.classList.toggle('closed');document.getElementById('lt').textContent=l.classList.contains('closed')?'+':'–'};
 if(innerWidth<900||innerHeight>innerWidth){document.getElementById('legend').classList.add('closed');document.getElementById('lt').textContent='+';}
 addEventListener('resize',()=>map.invalidateSize());
+(function(){
+  const b=document.getElementById('fs'), d=document.documentElement;
+  const req=d.requestFullscreen||d.webkitRequestFullscreen, ex=document.exitFullscreen||document.webkitExitFullscreen;
+  const isFs=()=>document.fullscreenElement||document.webkitFullscreenElement;
+  if(!req){ b.style.display='none'; return; }
+  b.onclick=()=>{ try{ isFs()? ex.call(document) : req.call(d); }catch(e){} };
+  const upd=()=>{ document.getElementById('fsi').setAttribute('d', isFs()?'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5':'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'); setTimeout(()=>{map.invalidateSize(); if(typeof pano!=='undefined'&&pano) google.maps.event.trigger(pano,'resize');},200); };
+  document.addEventListener('fullscreenchange',upd); document.addEventListener('webkitfullscreenchange',upd);
+})();
+
 // ayırıcıyı sürükleyerek harita / sokak görünümü oranını ayarla
 (function(){
   const sp=document.getElementById('split'), mb=document.getElementById('mapbox'), sh=document.getElementById('shield');
